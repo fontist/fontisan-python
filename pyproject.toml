@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# PROVISIONAL name. The PyPI name (`fontisan` vs `fontisan-python`) and the
+# Python floor are OWNER decisions (fontist/fontisan#166); nothing is
+# published until they are stated. The import name is `fontisan`.
+name = "fontisan-python"
+version = "0.1.0.dev0"
+description = "Python face of the fontisan font engine: ctypes binding over the fontisan C-ABI cdylib (audit and table-read)"
+readme = "README.md"
+license = { text = "BSD-3-Clause" }
+# OWNER DECISION: provisional floor, same as parsanol-python.
+requires-python = ">=3.9"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Text Processing :: Fonts",
+]
+
+[project.urls]
+Repository = "https://github.com/fontist/fontisan-python"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+fontisan = ["lib/*.so", "lib/*.dylib", "lib/*.dll", "lib/ENGINE_REV"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

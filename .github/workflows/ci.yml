@@ -1,0 +1,49 @@
+name: CI
+
+# Editable install against a freshly built cdylib at the pinned engine rev,
+# then the full corpus-parity suite. Written, not yet run (no GitHub repo yet).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-15]
+        python: ['3.9', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the engine pin
+        id: pin
+        shell: bash
+        run: echo "rev=$(cat ENGINE_REV)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: fontist/fontisan-rs
+          ref: ${{ steps.pin.outputs.rev }}
+          path: fontisan-rs
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build the C-ABI cdylib
+        run: cargo build -p fontisan-ffi --release
+        working-directory: fontisan-rs
+      - name: Stage the cdylib and stamp the engine rev
+        run: python3 scripts/stage_cdylib.py fontisan-rs/target/release/libfontisan${{ matrix.os == 'macos-15' && '.dylib' || '.so' }}
+      - name: Fetch the shared corpus
+        run: python3 scripts/corpus_fetch.py
+      - name: Install
+        run: python3 -m pip install -e . pytest
+      - name: Test (corpus parity included)
+        run: python3 -m pytest tests -q
+        env:
+          FONTISAN_REQUIRE_CORPUS: '1'
