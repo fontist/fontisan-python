@@ -41,7 +41,7 @@ READ_METADATA = 1
 READ_LAZY = 2
 AUDIT_VALIDATE = 1
 
-_LIB_NAMES = ("libfontisan.dylib", "libfontisan.so", "fontisan.dll", "libfontisan.dll")
+_LIB_NAMES = ("libfontisan_cdylib.dylib", "libfontisan_cdylib.so", "fontisan_cdylib.dll", "libfontisan_cdylib.dll")
 
 
 class EngineError(RuntimeError):
@@ -118,14 +118,6 @@ def _candidate_paths() -> list[str]:
     return out
 
 
-def _stamped_rev(lib_path: str) -> Optional[str]:
-    stamp = Path(lib_path).resolve().parent / "ENGINE_REV"
-    try:
-        return stamp.read_text().strip() or None
-    except OSError:
-        return None
-
-
 def load() -> ctypes.CDLL:
     """dlopen the cdylib once, bind it, and check ABI version and engine rev."""
     global _lib, _lib_path
@@ -147,8 +139,9 @@ def load() -> ctypes.CDLL:
             errors.append(f"{candidate}: {error}")
     if lib is None or path is None:
         raise EngineError(
-            "libfontisan not found (build it with `cargo build -p fontisan-ffi "
-            "--release` and point FONTISAN_CDYLIB at it, or install a wheel that "
+            "libfontisan_cdylib not found (build it with `cargo build --release "
+            "--manifest-path ext/fontisan_cdylib/Cargo.toml` in fontisan at FONTISAN_REV "
+            "and point FONTISAN_CDYLIB at it, or install a wheel that "
             "vendors it). Tried:\n  " + "\n  ".join(errors)
         )
 
@@ -163,18 +156,21 @@ def load() -> ctypes.CDLL:
     if found != ABI_VERSION:
         raise EngineError(f"{path} speaks ABI {found}, this package expects {ABI_VERSION}")
 
-    # Newer engines export the rev they were built from; engines at the pinned
-    # rev do not, so the build stamps lib/ENGINE_REV instead. Either must match.
-    reported = None
-    if hasattr(lib, "fontisan_cdylib_engine_rev"):
-        lib.fontisan_cdylib_engine_rev.argtypes = []
-        lib.fontisan_cdylib_engine_rev.restype = ctypes.c_char_p
-        raw = lib.fontisan_cdylib_engine_rev()
-        reported = raw.decode() if raw else None
-    stamped = _stamped_rev(path)
-    for source, rev in (("symbol", reported), ("ENGINE_REV stamp", stamped)):
-        if rev is not None and rev != ENGINE_REV:
-            raise EngineError(f"{path} was built from engine {rev} ({source}), this package pins {ENGINE_REV}")
+    try:
+        revision = lib.fontisan_cdylib_engine_rev
+    except AttributeError as error:
+        raise EngineError(f"{path} exports no engine rev (fontisan_cdylib_engine_rev)") from error
+    revision.argtypes = []
+    revision.restype = ctypes.c_char_p
+    raw = revision()
+    if not raw:
+        raise EngineError(f"{path} exports an empty engine rev")
+    try:
+        reported = raw.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise EngineError(f"{path} exports an invalid engine rev") from error
+    if reported != ENGINE_REV:
+        raise EngineError(f"{path} was built from engine {reported}, this package pins {ENGINE_REV}")
 
     _lib, _lib_path = lib, path
     return lib
@@ -185,19 +181,9 @@ def cdylib_path() -> Optional[str]:
     return _lib_path
 
 
-def engine_rev() -> Optional[str]:
-    """The fontisan-rs rev the loaded cdylib was built from.
-
-    None when the cdylib carries neither the symbol nor the stamp (a cdylib
-    pointed at through FONTISAN_CDYLIB without a sibling ENGINE_REV): the pin
-    is then unverified rather than assumed.
-    """
-    lib = load()
-    if hasattr(lib, "fontisan_cdylib_engine_rev"):
-        raw = lib.fontisan_cdylib_engine_rev()
-        if raw:
-            return raw.decode()
-    return _stamped_rev(_lib_path or "")
+def engine_rev() -> str:
+    """The verified fontisan-rs rev exported by the loaded cdylib."""
+    return load().fontisan_cdylib_engine_rev().decode("ascii")
 
 
 def abi_version() -> int:
@@ -238,7 +224,7 @@ def call(op: int, input_bytes: bytes, flags: int = 0) -> Reply:
 
 def lib_filename() -> str:
     if sys.platform == "darwin":
-        return "libfontisan.dylib"
+        return "libfontisan_cdylib.dylib"
     if sys.platform.startswith("win"):
-        return "fontisan.dll"
-    return "libfontisan.so"
+        return "fontisan_cdylib.dll"
+    return "libfontisan_cdylib.so"

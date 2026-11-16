@@ -1,7 +1,7 @@
 name: CI
 
-# Editable install against a freshly built cdylib at the pinned engine rev,
-# then the full corpus-parity suite. Written, not yet run (no GitHub repo yet).
+# Editable install against the Ruby tier cdylib at FONTISAN_REV,
+# then the full corpus-parity suite.
 
 on:
   push:
@@ -21,24 +21,24 @@ jobs:
         python: ['3.9', '3.12']
     steps:
       - uses: actions/checkout@v4
-      - name: Read the engine pin
+      - name: Read the Ruby source pin
         id: pin
         shell: bash
-        run: echo "rev=$(cat ENGINE_REV)" >> "$GITHUB_OUTPUT"
+        run: echo "rev=$(cat FONTISAN_REV)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          repository: fontist/fontisan-rs
+          repository: fontist/fontisan
           ref: ${{ steps.pin.outputs.rev }}
-          path: fontisan-rs
+          path: fontisan-source
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       - name: Build the C-ABI cdylib
-        run: cargo build -p fontisan-ffi --release
-        working-directory: fontisan-rs
-      - name: Stage the cdylib and stamp the engine rev
-        run: python3 scripts/stage_cdylib.py fontisan-rs/target/release/libfontisan${{ matrix.os == 'macos-15' && '.dylib' || '.so' }}
+        run: cargo build --release --manifest-path ext/fontisan_cdylib/Cargo.toml
+        working-directory: fontisan-source
+      - name: Stage and verify the cdylib
+        run: python3 scripts/stage_cdylib.py --fontisan-source fontisan-source fontisan-source/ext/fontisan_cdylib/target/release/libfontisan_cdylib${{ matrix.os == 'macos-15' && '.dylib' || '.so' }}
       - name: Fetch the shared corpus
         run: python3 scripts/corpus_fetch.py
       - name: Install

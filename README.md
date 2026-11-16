@@ -2,10 +2,10 @@
 
 The Python face of the [fontisan](https://github.com/fontist/fontisan) font
 engine (fontist/fontisan#166). A setuptools package that rides the existing
-fontisan C-ABI cdylib (`fontisan-rs`, the same one the Ruby `:ffi` tier uses)
-through `ctypes`, shipped as per-platform package data
-(`fontisan/lib/libfontisan.{so,dylib}` / `fontisan.dll`). No second engine, no
-new FFI surface. Modeled on `parsanol/parsanol-python`.
+Ruby `:ffi` tier’s C-ABI cdylib (`fontist/fontisan`
+`ext/fontisan_cdylib`) through `ctypes`, shipped as per-platform package data
+(`fontisan/lib/libfontisan_cdylib.{so,dylib}` / `fontisan_cdylib.dll`).
+Modeled on `parsanol/parsanol-python`.
 
 > **Provisional.** The package name `fontisan-python` and the Python floor
 > (`requires-python >= 3.9`) are placeholders. The PyPI name (`fontisan` vs
@@ -38,20 +38,44 @@ with `status: "unsupported"`. Errors carry `kind` (`ErrorKind`, from
 
 ## Engine pin
 
-`ENGINE_REV` holds the fontisan-rs commit the cdylib is built from. The pinned
-engine exports no rev symbol, so `scripts/stage_cdylib.py` stamps
-`fontisan/lib/ENGINE_REV` next to the vendored library; the loader refuses a
-cdylib whose stamp (or `fontisan_cdylib_engine_rev`, where a newer engine
-exports it) differs from the pin, or whose ABI version is not 1.
+`FONTISAN_REV` pins the `fontist/fontisan` source commit containing
+`ext/fontisan_cdylib`. Its `Cargo.toml` pins the `fontist/fontisan-rs` engine
+dependency. `ENGINE_REV` and `src/fontisan/_engine.py` are generated from that
+dependency using `scripts/stage_cdylib.py --update-engine-rev`; do not edit
+them by hand.
+
+Staging requires a checkout at `FONTISAN_REV` with its committed Cargo.toml,
+checks that both generated engine pins match the dependency, and loads the
+built binary to check its `fontisan_cdylib_engine_rev` export before copying
+it. The runtime loader also requires that export to match `ENGINE_REV` and
+requires ABI version 1. There is no revision stamp file.
 
 ## Develop
 
+Building requires Rust and Cargo. The binding tests also require `rustc` on
+`PATH` to compile small cdylib fixtures for revision-validation checks.
+
 ```sh
-cargo build -p fontisan-ffi --release          # in a fontisan-rs checkout at ENGINE_REV
-python scripts/stage_cdylib.py <fontisan-rs>/target/release/libfontisan.dylib
+git clone https://github.com/fontist/fontisan /tmp/fontisan-source
+git -C /tmp/fontisan-source checkout "$(cat FONTISAN_REV)"
+cargo build --release --manifest-path /tmp/fontisan-source/ext/fontisan_cdylib/Cargo.toml
+# macOS; use libfontisan_cdylib.so on Linux or fontisan_cdylib.dll on Windows
+python scripts/stage_cdylib.py --fontisan-source /tmp/fontisan-source \
+  /tmp/fontisan-source/ext/fontisan_cdylib/target/release/libfontisan_cdylib.dylib
 python scripts/corpus_fetch.py                 # shared fontisan corpus -> .corpus/fontisan
 pip install -e . pytest && pytest -q -s
 ```
+
+To change the source pin, update `FONTISAN_REV`, check out that commit, then
+regenerate the engine pins before building and staging:
+
+```sh
+python scripts/stage_cdylib.py --fontisan-source /tmp/fontisan-source --update-engine-rev
+```
+
+The generator and staging script support Python 3.9 without a TOML package.
+They expect the pinned crate’s inline Git dependency declaration and fail if
+upstream changes that layout.
 
 `FONTISAN_CDYLIB` points at a cdylib elsewhere; `FONTISAN_CORPUS_DIR` at an
 existing corpus root (the directory that contains `corpus/`).
@@ -70,5 +94,7 @@ not vendored; only the ci tier is used.
 `.github/workflows/wheels.yml` builds one wheel per platform (linux glibc and
 musl x86_64, macOS arm64 and x64, windows x64), retags each with its real
 platform tag, and smokes the installed wheel with the parity suite.
-`ci.yml` runs the suite against a freshly built cdylib. Neither has been run
-yet; only the local macOS arm64 build is verified.
+`ci.yml` runs the suite against a freshly built cdylib. Both workflows check
+out `fontist/fontisan` at `FONTISAN_REV`, build `ext/fontisan_cdylib`, and
+verify the binary and Cargo dependency pin during staging. The wheels
+workflow also runs when `FONTISAN_REV` changes.
