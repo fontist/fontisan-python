@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ctypes
 import importlib.util
+import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -55,7 +57,8 @@ pub extern "C" fn fontisan_cdylib_engine_rev() -> *const u8 {{ {value} }}
         source.write_text(exports)
         library = tmp_path / _ffi.lib_filename()
         subprocess.run(
-            ["rustc", "--crate-type", "cdylib", str(source), "-o", str(library)],
+            ["rustc", *shlex.split(os.environ.get("RUSTFLAGS", "")),
+             "--crate-type", "cdylib", str(source), "-o", str(library)],
             check=True, capture_output=True, text=True,
         )
         return library

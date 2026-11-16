@@ -41,10 +41,19 @@ jobs:
           - { name: macos-x64, os: macos-15-intel, lib: libfontisan_cdylib.dylib, platform_tag: macosx_11_0_x86_64 }
           - { name: windows-x64, os: windows-2022, lib: fontisan_cdylib.dll, platform_tag: win_amd64 }
     container: ${{ matrix.container }}
+    env:
+      # Rust's musl target defaults to static CRT linkage, incompatible with cdylib.
+      RUSTFLAGS: ${{ matrix.container && '-C target-feature=-crt-static' || '' }}
     steps:
       - name: Alpine prerequisites (musl)
         if: matrix.container
-        run: apk add --no-cache bash git curl build-base python3 py3-pip py3-virtualenv rust cargo nodejs
+        run: apk add --no-cache bash git curl build-base python3 py3-pip py3-virtualenv nodejs
+      - name: Install stable Rust for musl
+        if: matrix.container
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
+          sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v4
       - name: Read the Ruby source pin
         id: pin

@@ -14,10 +14,20 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import urllib.request
 from pathlib import Path
+
+
+def _remove_readonly(function, path, exc_info):
+    """Windows cannot unlink Git's read-only pack files until made writable."""
+    if not isinstance(exc_info[1], PermissionError):
+        raise exc_info[1]
+    os.chmod(path, os.stat(path).st_mode | stat.S_IWRITE)
+    function(path)
+
 
 root = Path(__file__).resolve().parents[1]
 dest = Path(sys.argv[1]) if len(sys.argv) > 1 else root / ".corpus" / "fontisan"
@@ -31,10 +41,14 @@ if not (corpus / "manifest.json").exists():
         shutil.copytree(Path(src) / "corpus", corpus)
     else:
         tmp = dest / "_clone"
-        subprocess.check_call(["git", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/fontist/fontisan", str(tmp)])
-        subprocess.check_call(["git", "-C", str(tmp), "checkout", rev, "--", "corpus"])
+        # Fetch all objects at the pin before checkout; no lazy blob hydration.
+        tmp.mkdir()
+        subprocess.check_call(["git", "-C", str(tmp), "init"])
+        subprocess.check_call(["git", "-C", str(tmp), "remote", "add", "origin", "https://github.com/fontist/fontisan"])
+        subprocess.check_call(["git", "-C", str(tmp), "fetch", "--depth=1", "origin", rev])
+        subprocess.check_call(["git", "-C", str(tmp), "checkout", "FETCH_HEAD", "--", "corpus"])
         shutil.move(str(tmp / "corpus"), str(corpus))
-        shutil.rmtree(tmp)
+        shutil.rmtree(tmp, onerror=_remove_readonly)
 
 manifest = json.loads((corpus / "manifest.json").read_text())
 n = 0
