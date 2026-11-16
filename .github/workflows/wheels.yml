@@ -20,6 +20,7 @@ on:
       - 'pyproject.toml'
       - 'src/**'
       - 'ENGINE_REV'
+      - 'FONTISAN_REV'
       - 'CORPUS_REV'
       - 'scripts/**'
       - '.github/workflows/wheels.yml'
@@ -34,26 +35,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-glibc-x86_64, os: ubuntu-22.04, lib: libfontisan.so, platform_tag: manylinux_2_35_x86_64 }
-          - { name: linux-musl-x86_64, os: ubuntu-22.04, lib: libfontisan.so, platform_tag: musllinux_1_2_x86_64, container: 'alpine:3.20' }
-          - { name: macos-arm64, os: macos-15, lib: libfontisan.dylib, platform_tag: macosx_11_0_arm64 }
-          - { name: macos-x64, os: macos-15-intel, lib: libfontisan.dylib, platform_tag: macosx_11_0_x86_64 }
-          - { name: windows-x64, os: windows-2022, lib: fontisan.dll, platform_tag: win_amd64 }
+          - { name: linux-glibc-x86_64, os: ubuntu-22.04, lib: libfontisan_cdylib.so, platform_tag: manylinux_2_35_x86_64 }
+          - { name: linux-musl-x86_64, os: ubuntu-22.04, lib: libfontisan_cdylib.so, platform_tag: musllinux_1_2_x86_64, container: 'alpine:3.20' }
+          - { name: macos-arm64, os: macos-15, lib: libfontisan_cdylib.dylib, platform_tag: macosx_11_0_arm64 }
+          - { name: macos-x64, os: macos-15-intel, lib: libfontisan_cdylib.dylib, platform_tag: macosx_11_0_x86_64 }
+          - { name: windows-x64, os: windows-2022, lib: fontisan_cdylib.dll, platform_tag: win_amd64 }
     container: ${{ matrix.container }}
+    env:
+      # Rust's musl target defaults to static CRT linkage, incompatible with cdylib.
+      RUSTFLAGS: ${{ matrix.container && '-C target-feature=-crt-static' || '' }}
     steps:
       - name: Alpine prerequisites (musl)
         if: matrix.container
-        run: apk add --no-cache bash git curl build-base python3 py3-pip py3-virtualenv rust cargo nodejs
+        run: apk add --no-cache bash git curl build-base python3 py3-pip py3-virtualenv nodejs
+      - name: Install stable Rust for musl
+        if: matrix.container
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh
+          sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@v4
-      - name: Read the engine pin
+      - name: Read the Ruby source pin
         id: pin
         shell: bash
-        run: echo "rev=$(cat ENGINE_REV)" >> "$GITHUB_OUTPUT"
+        run: echo "rev=$(cat FONTISAN_REV)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
-          repository: fontist/fontisan-rs
+          repository: fontist/fontisan
           ref: ${{ steps.pin.outputs.rev }}
-          path: fontisan-rs
+          path: fontisan-source
       - uses: dtolnay/rust-toolchain@stable
         if: ${{ !matrix.container }}
       - uses: actions/setup-python@v5
@@ -61,11 +71,11 @@ jobs:
         with:
           python-version: '3.12'
       - name: Build the cdylib
-        run: cargo build -p fontisan-ffi --release
-        working-directory: fontisan-rs
-      - name: Stage the vendored engine (stamps the engine rev)
+        run: cargo build --release --manifest-path ext/fontisan_cdylib/Cargo.toml
+        working-directory: fontisan-source
+      - name: Stage and verify the vendored engine
         shell: bash
-        run: python3 scripts/stage_cdylib.py "fontisan-rs/target/release/${{ matrix.lib }}"
+        run: python3 scripts/stage_cdylib.py --fontisan-source fontisan-source "fontisan-source/ext/fontisan_cdylib/target/release/${{ matrix.lib }}"
       - name: Build and retag the wheel
         shell: bash
         run: |

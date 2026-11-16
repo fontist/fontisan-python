@@ -25,7 +25,7 @@ Repository = "https://github.com/fontist/fontisan-python"
 where = ["src"]
 
 [tool.setuptools.package-data]
-fontisan = ["lib/*.so", "lib/*.dylib", "lib/*.dll", "lib/ENGINE_REV"]
+fontisan = ["lib/libfontisan_cdylib.so", "lib/libfontisan_cdylib.dylib", "lib/fontisan_cdylib.dll"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

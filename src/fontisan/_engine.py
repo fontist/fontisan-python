@@ -1,4 +1,6 @@
-"""The fontisan-rs rev this package is built against (kept in step with the
-repo-root ENGINE_REV file by tests/test_engine_rev.py)."""
+"""Generated from the pinned fontisan cdylib Cargo.toml.
 
-ENGINE_REV = "614dca354822aa5a20df50bbfb15e5e2f64f5c8a"
+Regenerate with scripts/stage_cdylib.py --fontisan-source <checkout> --update-engine-rev.
+"""
+
+ENGINE_REV = "f45057a12e15ba9f2c02526cd8ca0603c80edaf9"

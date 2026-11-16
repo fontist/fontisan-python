@@ -38,4 +38,4 @@ def font_path(corpus: Path, name: str) -> Path:
 
 
 def load_json(path: Path):
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
